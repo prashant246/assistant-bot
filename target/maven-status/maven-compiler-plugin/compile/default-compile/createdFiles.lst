@@ -12,6 +12,7 @@ com/microservice/assistant/service/TrainingService.class
 com/microservice/assistant/model/DocumentSegment$SegmentType.class
 com/microservice/assistant/service/impl/TrainingServiceImpl$1.class
 com/microservice/assistant/api/TrainingController.class
+com/microservice/assistant/service/impl/QueryServiceImpl$1.class
 com/microservice/assistant/model/Context.class
 com/microservice/assistant/model/TrainingData.class
 com/microservice/assistant/service/impl/TrainingServiceImpl.class
