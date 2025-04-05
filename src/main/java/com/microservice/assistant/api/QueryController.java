@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/queries")
@@ -20,10 +21,14 @@ public class QueryController {
         this.queryService = queryService;
     }
 
-    @PostMapping
-    public ResponseEntity<QueryResponse> query(@RequestBody Query query) {
-        QueryResponse response = queryService.processQuery(query);
-        return ResponseEntity.ok(response);
+    @PostMapping()
+    public ResponseEntity<Object> query(@RequestBody Query query) {
+        try {
+            QueryResponse response = queryService.processQuery(query);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.of(Optional.of(e.getMessage()));
+        }
     }
 
     @GetMapping("/{responseId}")

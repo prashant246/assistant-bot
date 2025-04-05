@@ -1,5 +1,7 @@
 package com.microservice.assistant.model;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -11,13 +13,15 @@ import java.util.Map;
  * Represents a query to be processed by the assistant
  */
 
+@NoArgsConstructor
 public class Query {
     private String question;
     private String contextId;
     private Map<String, String> parameters;
     private boolean useAllContexts;
 
-    public Query(String question, String contextId, Map<String, String> parameters, boolean useAllContexts) {
+    @JsonCreator
+    public Query(@JsonProperty("question") String question, @JsonProperty("contextId") String contextId, @JsonProperty("parameters") Map<String, String> parameters, @JsonProperty("useAllContexts") boolean useAllContexts) {
         this.question = question;
         this.contextId = contextId;
         this.parameters = parameters;

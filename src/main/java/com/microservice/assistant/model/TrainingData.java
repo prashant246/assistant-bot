@@ -1,5 +1,7 @@
 package com.microservice.assistant.model;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -19,7 +21,10 @@ public class TrainingData {
     private List<String> tags;
     private TrainingType type;
 
-    public TrainingData(String contextId, String content, String sourceFile, Map<String, String> metadata, List<String> tags, TrainingType type) {
+    @JsonCreator
+    public TrainingData(@JsonProperty("contextId") String contextId, @JsonProperty("content") String content,
+                        @JsonProperty("sourceFile") String sourceFile, @JsonProperty("metadata") Map<String, String> metadata,
+                        @JsonProperty("tags") List<String> tags, @JsonProperty("type") TrainingType type) {
         this.contextId = contextId;
         this.content = content;
         this.sourceFile = sourceFile;
