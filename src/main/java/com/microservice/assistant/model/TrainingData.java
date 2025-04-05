@@ -13,6 +13,10 @@ import java.util.Map;
 /**
  * Represents training data for the assistant
  */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class TrainingData {
     private String contextId;
     private String content;

@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
@@ -63,6 +64,34 @@ public class ContextController {
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();
         } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+    
+    @PostMapping("/documents/bytes")
+    public ResponseEntity<Context> addDocumentBytes(
+            @RequestParam(value = "contextId", required = false) String contextId,
+            @RequestParam("fileName") String fileName,
+            @RequestParam(value = "contextName", required = false) String contextName,
+            @RequestBody byte[] documentBytes) {
+        
+        try {
+            // Create context if it doesn't exist
+            if (contextId == null || contextId.isEmpty()) {
+                if (contextName == null || contextName.isEmpty()) {
+                    contextName = "Context for " + fileName;
+                }
+                Context newContext = contextService.createContext(contextName);
+                contextId = newContext.getId();
+            }
+            
+            // Add document to context
+            Context context = contextService.addDocument(
+                    contextId, fileName, new ByteArrayInputStream(documentBytes));
+            return ResponseEntity.ok(context);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }

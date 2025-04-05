@@ -56,8 +56,20 @@ public class TrainingServiceImpl implements TrainingService {
     }
     
     private void processTrainingData(TrainingData data) {
+        // Allow creating new contexts if contextId isn't provided but only for DOCUMENT type
         if (data.getContextId() == null || data.getContextId().isEmpty()) {
-            throw new IllegalArgumentException("Context ID is required for training");
+            if (data.getType() == TrainingType.DOCUMENT) {
+                // Generate a context name from source file if available, or use a default
+                String contextName = data.getSourceFile() != null ? 
+                    "Context for " + data.getSourceFile() : 
+                    "Context created at " + System.currentTimeMillis();
+                    
+                Context newContext = contextService.createContext(contextName);
+                // Update the training data with the new context ID
+                data.setContextId(newContext.getId());
+            } else {
+                throw new IllegalArgumentException("Context ID is required for training type: " + data.getType());
+            }
         }
         
         // Get context to update
@@ -119,10 +131,9 @@ public class TrainingServiceImpl implements TrainingService {
                 1,
                 2,
                 SegmentType.DOCUMENTATION,
-                null  // Add null or appropriate default values for any remaining required parameters
+                null
         );
-
-
+        
         // Add this segment with higher priority/weight in context
         context.getSegments().add(qaSegment);
         context.setUpdatedAt(System.currentTimeMillis());
@@ -203,10 +214,9 @@ public class TrainingServiceImpl implements TrainingService {
                     i + 1,
                     endLine,
                     type,
-                    null  // Add null or appropriate default values for any remaining required parameters
+                    null
             );
-
-
+            
             segments.add(segment);
         }
         

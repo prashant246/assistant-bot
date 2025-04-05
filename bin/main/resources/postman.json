@@ -1,0 +1,409 @@
+{
+  "info": {
+    "name": "Microservice Assistant API",
+    "description": "Collection of API endpoints for interacting with the Microservice Assistant",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Context Management",
+      "description": "Endpoints for managing contexts and documents",
+      "item": [
+        {
+          "name": "Create Context",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/contexts",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "contexts"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"User Service\"\n}"
+            },
+            "description": "Creates a new context for storing microservice information"
+          }
+        },
+        {
+          "name": "Get All Contexts",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/contexts",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "contexts"]
+            },
+            "description": "Retrieves all available contexts"
+          }
+        },
+        {
+          "name": "Get Context",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/contexts/{{contextId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "contexts", "{{contextId}}"]
+            },
+            "description": "Retrieves details of a specific context"
+          }
+        },
+        {
+          "name": "Add Document to Context (File)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/contexts/{{contextId}}/documents",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "contexts", "{{contextId}}", "documents"]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "/path/to/file"
+                }
+              ]
+            },
+            "description": "Uploads a document file to be processed and added to a context"
+          }
+        },
+        {
+          "name": "Add Document (Byte Array)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/octet-stream"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/contexts/documents/bytes?fileName=api-docs.yaml&contextId={{contextId}}&contextName=Optional Context Name",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "contexts", "documents", "bytes"],
+              "query": [
+                {
+                  "key": "fileName",
+                  "value": "api-docs.yaml",
+                  "description": "Name of the document file"
+                },
+                {
+                  "key": "contextId",
+                  "value": "{{contextId}}",
+                  "description": "Optional - ID of existing context (will create new if not provided)"
+                },
+                {
+                  "key": "contextName",
+                  "value": "Optional Context Name",
+                  "description": "Optional - Name for new context if contextId not provided"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "Binary document data goes here",
+              "options": {
+                "raw": {
+                  "language": "binary"
+                }
+              }
+            },
+            "description": "Adds a document via byte array with optional context creation"
+          }
+        },
+        {
+          "name": "Search Context",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/contexts/{{contextId}}/search?query={{searchQuery}}&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "contexts", "{{contextId}}", "search"],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "{{searchQuery}}"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Searches for relevant segments within a context"
+          }
+        },
+        {
+          "name": "Delete Context",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/contexts/{{contextId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "contexts", "{{contextId}}"]
+            },
+            "description": "Deletes a context"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Query",
+      "description": "Endpoints for submitting queries and managing responses",
+      "item": [
+        {
+          "name": "Submit Query",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/queries",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "queries"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question\": \"What endpoints does the user service expose?\",\n  \"contextId\": \"{{contextId}}\",\n  \"parameters\": {},\n  \"useAllContexts\": false\n}"
+            },
+            "description": "Submits a query to be processed by the assistant"
+          }
+        },
+        {
+          "name": "Get Response",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/queries/{{responseId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "queries", "{{responseId}}"]
+            },
+            "description": "Retrieves a previous query response"
+          }
+        },
+        {
+          "name": "Rate Response",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/queries/{{responseId}}/feedback",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "queries", "{{responseId}}", "feedback"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": 4,\n  \"feedback\": \"This answer was very helpful\"\n}"
+            },
+            "description": "Provides feedback on a query response"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Training",
+      "description": "Endpoints for training the assistant",
+      "item": [
+        {
+          "name": "Submit Document Training (Create Context)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/training",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "training"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"DOCUMENT\",\n  \"content\": \"# User Service API\\n\\nThe user service exposes endpoints for user management...\",\n  \"sourceFile\": \"UserService.md\",\n  \"tags\": [\"api\", \"documentation\", \"user-service\"]\n}"
+            },
+            "description": "Submits document training data and creates a new context"
+          }
+        },
+        {
+          "name": "Submit Document Training (Existing Context)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/training",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "training"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contextId\": \"{{contextId}}\",\n  \"type\": \"DOCUMENT\",\n  \"content\": \"# User Service API\\n\\nThe user service exposes endpoints for user management...\",\n  \"sourceFile\": \"UserService.md\",\n  \"tags\": [\"api\", \"documentation\", \"user-service\"]\n}"
+            },
+            "description": "Submits document training data to an existing context"
+          }
+        },
+        {
+          "name": "Submit QA Pair Training",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/training",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "training"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contextId\": \"{{contextId}}\",\n  \"type\": \"QUERY_RESPONSE_PAIR\",\n  \"content\": \"What authentication method does the user service use?\\n---\\nThe user service uses JWT tokens for authentication with a 24-hour expiration.\"\n}"
+            },
+            "description": "Submits query-response pair training data"
+          }
+        },
+        {
+          "name": "Submit Feedback Training",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/training",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "training"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contextId\": \"{{contextId}}\",\n  \"type\": \"FEEDBACK\",\n  \"content\": \"4:The answer about authentication was very helpful\",\n  \"tags\": [\"authentication\", \"jwt\"]\n}"
+            },
+            "description": "Submits feedback training data"
+          }
+        },
+        {
+          "name": "Submit Metadata Training",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/training",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "training"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contextId\": \"{{contextId}}\",\n  \"type\": \"METADATA\",\n  \"metadata\": {\n    \"service_name\": \"User Service\",\n    \"version\": \"2.3.1\",\n    \"team\": \"Authentication Team\",\n    \"dependencies\": \"Postgres, Redis, Auth Service\"\n  }\n}"
+            },
+            "description": "Submits metadata training data"
+          }
+        },
+        {
+          "name": "Get Training Examples",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/training/examples",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "training", "examples"]
+            },
+            "description": "Returns example formats for training data"
+          }
+        },
+        {
+          "name": "Get Training Status",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/training/status/{{trainingId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "training", "status", "{{trainingId}}"]
+            },
+            "description": "Checks the status of a training job"
+          }
+        },
+        {
+          "name": "Get Training Metrics",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/training/metrics?contextId={{contextId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "training", "metrics"],
+              "query": [
+                {
+                  "key": "contextId",
+                  "value": "{{contextId}}"
+                }
+              ]
+            },
+            "description": "Retrieves metrics about training jobs"
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080/microservice-assistant",
+      "type": "string"
+    },
+    {
+      "key": "contextId",
+      "value": "your-context-id",
+      "type": "string"
+    },
+    {
+      "key": "responseId",
+      "value": "your-response-id",
+      "type": "string"
+    },
+    {
+      "key": "trainingId",
+      "value": "your-training-id",
+      "type": "string"
+    },
+    {
+      "key": "searchQuery",
+      "value": "authentication",
+      "type": "string"
+    }
+  ]
+}
