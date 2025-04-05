@@ -48,7 +48,7 @@ Key configuration parameters in `application.properties`:
 ```properties
 # ALM API configuration
 alm.api.url=https://api.rabbithole.cred.club/v1/chat/completions
-alm.api.key=sk-t27d_0VNByGL8lon6JDxtw
+alm.api.key=***
 alm.model=gemini-2-0-flash
 ```
 
