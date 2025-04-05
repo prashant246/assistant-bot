@@ -13,10 +13,6 @@ import java.util.Map;
 /**
  * Represents training data for the assistant
  */
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
 public class TrainingData {
     private String contextId;
     private String content;
@@ -24,6 +20,10 @@ public class TrainingData {
     private Map<String, String> metadata;
     private List<String> tags;
     private TrainingType type;
+
+    public TrainingData() {
+
+    }
 
     @JsonCreator
     public TrainingData(@JsonProperty("contextId") String contextId, @JsonProperty("content") String content,

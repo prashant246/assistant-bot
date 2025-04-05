@@ -49,6 +49,60 @@ public class TrainingController {
         
         return ResponseEntity.ok(response);
     }
+    
+    /**
+     * Submit base64-encoded document for training and context building
+     * 
+     * @param request Request containing base64-encoded document content
+     * @return Response with training job information
+     */
+    @PostMapping("/document/base64")
+    public ResponseEntity<Map<String, Object>> trainWithBase64Document(@RequestBody Map<String, Object> request) {
+        try {
+            // Extract parameters from request
+            String contextId = (String) request.get("contextId");
+            String contextName = (String) request.get("contextName");
+            String fileName = (String) request.get("fileName");
+            String base64Content = (String) request.get("content");
+            
+            // Extract and convert tags if present
+            @SuppressWarnings("unchecked")
+            List<String> tags = (List<String>) request.get("tags");
+            
+            // Validate required fields
+            if (fileName == null || fileName.isEmpty()) {
+                Map<String, Object> errorResponse = new HashMap<>();
+                errorResponse.put("success", false);
+                errorResponse.put("message", "Filename is required");
+                return ResponseEntity.badRequest().body(errorResponse);
+            }
+            
+            if (base64Content == null || base64Content.isEmpty()) {
+                Map<String, Object> errorResponse = new HashMap<>();
+                errorResponse.put("success", false);
+                errorResponse.put("message", "Base64 content is required");
+                return ResponseEntity.badRequest().body(errorResponse);
+            }
+            
+            // Process the document
+            boolean success = trainingService.trainWithBase64Document(
+                    contextId, contextName, fileName, base64Content, tags);
+            
+            // Prepare response
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", success);
+            response.put("message", success ? "Document training initiated successfully" : "Failed to process document");
+            response.put("fileName", fileName);
+            response.put("contextId", contextId);
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("message", "Error processing document: " + e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
 
     /**
      * Example endpoint showing format for different training types
@@ -66,6 +120,14 @@ public class TrainingController {
         documentExample.put("content", "# User Service API\n\nThe user service exposes endpoints for user management...");
         documentExample.put("sourceFile", "UserService.md");
         documentExample.put("tags", List.of("api", "documentation", "user-service"));
+        
+        // Base64 document example
+        Map<String, Object> base64Example = new HashMap<>();
+        base64Example.put("contextId", "your-context-id"); // Optional
+        base64Example.put("contextName", "My API Context"); // Optional
+        base64Example.put("fileName", "api-spec.yaml");
+        base64Example.put("content", "SGVsbG8gV29ybGQ="); // Base64 encoded "Hello World"
+        base64Example.put("tags", List.of("api", "specification"));
         
         // Query-Response pair example
         Map<String, Object> qaExample = new HashMap<>();
@@ -92,6 +154,7 @@ public class TrainingController {
         ));
         
         examples.put("document", documentExample);
+        examples.put("base64Document", base64Example);
         examples.put("queryResponse", qaExample);
         examples.put("feedback", feedbackExample);
         examples.put("metadata", metadataExample);
@@ -100,7 +163,7 @@ public class TrainingController {
     }
 
     @GetMapping("/status/{trainingId}")
-    public ResponseEntity<Map<String, Object>> getTrainingStatus(@PathVariable String trainingId) {
+    public ResponseEntity<Map<String, Object>> getTrainingStatus(@PathVariable("trainingId") String trainingId) {
         String status = trainingService.getTrainingStatus(trainingId);
         
         Map<String, Object> response = Map.of(

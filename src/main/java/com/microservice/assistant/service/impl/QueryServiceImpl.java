@@ -1,11 +1,9 @@
 package com.microservice.assistant.service.impl;
 
-import com.microservice.assistant.model.Context;
-import com.microservice.assistant.model.DocumentSegment;
-import com.microservice.assistant.model.Query;
-import com.microservice.assistant.model.QueryResponse;
+import com.microservice.assistant.model.*;
 import com.microservice.assistant.service.ContextService;
 import com.microservice.assistant.service.QueryService;
+import com.microservice.assistant.service.TrainingService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
@@ -15,16 +13,20 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 public class QueryServiceImpl implements QueryService {
     
     private final ContextService contextService;
+    private final TrainingService trainingService;
     private final Map<String, QueryResponse> responses = new ConcurrentHashMap<>();
     private final RestTemplate restTemplate;
     
@@ -38,8 +40,9 @@ public class QueryServiceImpl implements QueryService {
     private String almModel;
     
     @Autowired
-    public QueryServiceImpl(ContextService contextService) {
+    public QueryServiceImpl(ContextService contextService, TrainingService trainingService) {
         this.contextService = contextService;
+        this.trainingService = trainingService;
         this.restTemplate = new RestTemplate();
     }
     
@@ -47,23 +50,32 @@ public class QueryServiceImpl implements QueryService {
     public QueryResponse processQuery(Query query) {
         // Find relevant segments from the context
         List<DocumentSegment> relevantSegments = new ArrayList<>();
+        List<TrainingData> relevantTrainingData = new ArrayList<>();
         
         if (query.getContextId() != null && !query.getContextId().isEmpty()) {
             // Search in specific context
             relevantSegments = contextService.searchContext(
                     query.getContextId(), query.getQuestion(), 10);
+            
+            // Get relevant training data for this context
+            relevantTrainingData = trainingService.searchTrainingData(
+                    query.getContextId(), query.getQuestion(), 5);
         } else if (query.isUseAllContexts()) {
             // Search across all contexts
-            for (Context context : contextService.getAllContexts())
-            {
+            for (Context context: contextService.getAllContexts()){
                 List<DocumentSegment> segments = contextService.searchContext(
                         context.getId(), query.getQuestion(), 5);
                 relevantSegments.addAll(segments);
+                
+                // Get relevant training data for each context
+                List<TrainingData> trainingData = trainingService.searchTrainingData(
+                        context.getId(), query.getQuestion(), 3);
+                relevantTrainingData.addAll(trainingData);
             }
         }
         
         // Call ALM model with context and question
-        String answer = generateAnswer(query.getQuestion(), relevantSegments);
+        String answer = generateAnswer(query.getQuestion(), relevantSegments, relevantTrainingData);
         
         // Create and store response
         String responseId = UUID.randomUUID().toString();
@@ -74,7 +86,7 @@ public class QueryServiceImpl implements QueryService {
                 relevantSegments,
                 new HashMap<>(),
                 System.currentTimeMillis(),
-                0.85 // Placeholder confidence score
+                0.85  // Placeholder confidence score
         );
 
 
@@ -105,16 +117,74 @@ public class QueryServiceImpl implements QueryService {
         return true;
     }
     
-    private String generateAnswer(String question, List<DocumentSegment> segments) {
-        // Format context from segments
+    private String generateAnswer(String question, List<DocumentSegment> segments, List<TrainingData> trainingData) {
+        // Format context from segments and training data
         StringBuilder contextBuilder = new StringBuilder();
-        for (DocumentSegment segment : segments) {
-            contextBuilder.append("File: ").append(segment.getSourceFile())
-                    .append(" (Lines ").append(segment.getStartLine())
-                    .append("-").append(segment.getEndLine())
-                    .append(")\n")
-                    .append(segment.getContent())
-                    .append("\n\n");
+        
+        // First add training data as they're often more directly relevant
+        if (!trainingData.isEmpty()) {
+            contextBuilder.append("### Training Information\n\n");
+            
+            // Process QA pairs first as they're most directly relevant
+            List<TrainingData> qaPairs = trainingData.stream()
+                    .filter(td -> td.getType() == TrainingData.TrainingType.QUERY_RESPONSE_PAIR)
+                    .collect(Collectors.toList());
+            
+            if (!qaPairs.isEmpty()) {
+                contextBuilder.append("#### Specific Questions and Answers:\n\n");
+                for (TrainingData qa : qaPairs) {
+                    String[] parts = qa.getContent().split("\\n---\\n", 2);
+                    if (parts.length == 2) {
+                        contextBuilder.append("Q: ").append(parts[0].trim()).append("\n");
+                        contextBuilder.append("A: ").append(parts[1].trim()).append("\n\n");
+                    }
+                }
+            }
+            
+            // Process document type training data
+            List<TrainingData> docs = trainingData.stream()
+                    .filter(td -> td.getType() == TrainingData.TrainingType.DOCUMENT)
+                    .collect(Collectors.toList());
+            
+            if (!docs.isEmpty()) {
+                contextBuilder.append("#### Additional Information:\n\n");
+                for (TrainingData doc : docs) {
+                    contextBuilder.append("Source: ").append(doc.getSourceFile()).append("\n");
+                    contextBuilder.append(doc.getContent()).append("\n\n");
+                }
+            }
+            
+            // Process metadata
+            List<TrainingData> metadataEntries = trainingData.stream()
+                    .filter(td -> td.getType() == TrainingData.TrainingType.METADATA)
+                    .collect(Collectors.toList());
+            
+            if (!metadataEntries.isEmpty()) {
+                contextBuilder.append("#### Service Metadata:\n\n");
+                for (TrainingData meta : metadataEntries) {
+                    if (meta.getMetadata() != null) {
+                        meta.getMetadata().forEach((key, value) -> {
+                            contextBuilder.append(key).append(": ").append(value).append("\n");
+                        });
+                        contextBuilder.append("\n");
+                    }
+                }
+            }
+            
+            contextBuilder.append("\n\n");
+        }
+        
+        // Then add document segments
+        if (!segments.isEmpty()) {
+            contextBuilder.append("### Document Segments\n\n");
+            for (DocumentSegment segment : segments) {
+                contextBuilder.append("File: ").append(segment.getSourceFile())
+                        .append(" (Lines ").append(segment.getStartLine())
+                        .append("-").append(segment.getEndLine())
+                        .append(")\n")
+                        .append(segment.getContent())
+                        .append("\n\n");
+            }
         }
         
         String context = contextBuilder.toString();
@@ -167,7 +237,7 @@ public class QueryServiceImpl implements QueryService {
             
         } catch (Exception e) {
             // Fallback to basic response if API call fails
-            if (segments.isEmpty()) {
+            if (segments.isEmpty() && trainingData.isEmpty()) {
                 return "I don't have enough information to answer that question about your microservices.";
             } else {
                 return "Based on the available information about your microservice, I found relevant context " +

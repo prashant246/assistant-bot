@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -53,6 +54,39 @@ public class TrainingServiceImpl implements TrainingService {
         }).start();
         
         return true;
+    }
+    
+    @Override
+    public boolean trainWithBase64Document(String contextId, String contextName, String fileName, 
+                                          String base64Content, List<String> tags) {
+        try {
+            // Decode the base64 content
+            byte[] documentBytes = Base64.getDecoder().decode(base64Content);
+            String documentContent = new String(documentBytes);
+            
+            // Create training data object
+            TrainingData data = new TrainingData();
+            data.setContextId(contextId);
+            data.setContent(documentContent);
+            data.setSourceFile(fileName);
+            data.setType(TrainingType.DOCUMENT);
+            data.setTags(tags);
+            
+            // Create metadata with source information
+            Map<String, String> metadata = new HashMap<>();
+            metadata.put("source", "base64");
+            metadata.put("contentLength", String.valueOf(documentBytes.length));
+            data.setMetadata(metadata);
+            
+            // Use the standard training process
+            return train(data);
+        } catch (IllegalArgumentException e) {
+            // Failed to decode base64
+            return false;
+        } catch (Exception e) {
+            // Other errors
+            return false;
+        }
     }
     
     private void processTrainingData(TrainingData data) {
@@ -372,5 +406,88 @@ public class TrainingServiceImpl implements TrainingService {
         metricsBuilder.append("}\n");
         
         return metricsBuilder.toString();
+    }
+    
+    @Override
+    public List<TrainingData> searchTrainingData(String contextId, String query, int limit) {
+        // This method returns training data relevant to the given query
+        List<TrainingData> result = new ArrayList<>();
+        
+        // First collect all training data for this context
+        List<TrainingData> contextTrainingData = trainingData.values().stream()
+                .filter(data -> contextId.equals(data.getContextId()))
+                .collect(Collectors.toList());
+        
+        if (contextTrainingData.isEmpty()) {
+            return result; // No training data for this context
+        }
+        
+        // Prioritize different types of training data
+        // 1. First check for exact query matches in QA pairs (highest relevance)
+        for (TrainingData data : contextTrainingData) {
+            if (data.getType() == TrainingType.QUERY_RESPONSE_PAIR) {
+                String[] parts = data.getContent().split("\\n---\\n", 2);
+                if (parts.length == 2) {
+                    String storedQuery = parts[0].trim().toLowerCase();
+                    String userQuery = query.toLowerCase();
+                    
+                    // Check for exact or close matches
+                    if (storedQuery.equals(userQuery) || 
+                            storedQuery.contains(userQuery) || 
+                            userQuery.contains(storedQuery)) {
+                        result.add(data);
+                        
+                        // If we found an exact match, this is extremely relevant
+                        if (storedQuery.equals(userQuery) && result.size() >= limit) {
+                            return result;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 2. Check metadata for relevant information
+        for (TrainingData data : contextTrainingData) {
+            if (data.getType() == TrainingType.METADATA && result.size() < limit) {
+                // Check if metadata contains terms relevant to the query
+                if (data.getMetadata() != null && !data.getMetadata().isEmpty()) {
+                    boolean relevant = data.getMetadata().values().stream()
+                            .anyMatch(value -> {
+                                if (value instanceof String) {
+                                    String strValue = (String) value;
+                                    return strValue.toLowerCase().contains(query.toLowerCase());
+                                }
+                                return false;
+                            });
+                    
+                    if (relevant) {
+                        result.add(data);
+                    }
+                }
+            }
+        }
+        
+        // 3. Check document content for relevance
+        for (TrainingData data : contextTrainingData) {
+            if (data.getType() == TrainingType.DOCUMENT && result.size() < limit) {
+                if (data.getContent() != null && 
+                        data.getContent().toLowerCase().contains(query.toLowerCase())) {
+                    result.add(data);
+                }
+            }
+        }
+        
+        // 4. Finally, add feedback if it seems relevant
+        for (TrainingData data : contextTrainingData) {
+            if (data.getType() == TrainingType.FEEDBACK && result.size() < limit) {
+                if (data.getContent() != null && 
+                        data.getContent().toLowerCase().contains(query.toLowerCase())) {
+                    result.add(data);
+                }
+            }
+        }
+        
+        // Limit results
+        return result.stream().limit(limit).collect(Collectors.toList());
     }
 } 

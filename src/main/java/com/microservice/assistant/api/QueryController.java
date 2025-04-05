@@ -32,7 +32,7 @@ public class QueryController {
     }
 
     @GetMapping("/{responseId}")
-    public ResponseEntity<QueryResponse> getResponse(@PathVariable String responseId) {
+    public ResponseEntity<QueryResponse> getResponse(@PathVariable("responseId") String responseId) {
         QueryResponse response = queryService.getResponse(responseId);
         
         if (response == null) {
@@ -44,7 +44,7 @@ public class QueryController {
 
     @PostMapping("/{responseId}/feedback")
     public ResponseEntity<Void> provideFeedback(
-            @PathVariable String responseId,
+            @PathVariable("responseId") String responseId,
             @RequestBody Map<String, Object> feedback) {
         
         Integer rating = (Integer) feedback.get("rating");

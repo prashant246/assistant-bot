@@ -11,6 +11,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
@@ -42,7 +43,7 @@ public class ContextController {
     }
 
     @GetMapping("/{contextId}")
-    public ResponseEntity<Context> getContext(@PathVariable String contextId) {
+    public ResponseEntity<Context> getContext(@PathVariable("contextId") String contextId) {
         return contextService.getContext(contextId)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
@@ -50,7 +51,7 @@ public class ContextController {
 
     @PostMapping("/{contextId}/documents")
     public ResponseEntity<Context> addDocument(
-            @PathVariable String contextId,
+            @PathVariable("contextId") String contextId,
             @RequestParam("file") MultipartFile file) {
         
         if (file.isEmpty()) {
@@ -95,10 +96,58 @@ public class ContextController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
+    
+    @PostMapping("/documents/base64")
+    public ResponseEntity<Context> addDocumentBase64(
+            @RequestBody Map<String, String> request) {
+        
+        try {
+            // Extract parameters from request
+            String contextId = request.get("contextId");
+            String fileName = request.get("fileName");
+            String contextName = request.get("contextName");
+            String base64Content = request.get("content");
+            
+            // Validate required fields
+            if (fileName == null || fileName.isEmpty()) {
+                return ResponseEntity.badRequest().body(null);
+            }
+            
+            if (base64Content == null || base64Content.isEmpty()) {
+                return ResponseEntity.badRequest().body(null);
+            }
+            
+            // Decode base64 content
+            byte[] documentBytes;
+            try {
+                documentBytes = Base64.getDecoder().decode(base64Content);
+            } catch (IllegalArgumentException e) {
+                return ResponseEntity.badRequest().body(null);
+            }
+            
+            // Create context if it doesn't exist
+            if (contextId == null || contextId.isEmpty()) {
+                if (contextName == null || contextName.isEmpty()) {
+                    contextName = "Context for " + fileName;
+                }
+                Context newContext = contextService.createContext(contextName);
+                contextId = newContext.getId();
+            }
+            
+            // Add document to context
+            Context context = contextService.addDocument(
+                    contextId, fileName, new ByteArrayInputStream(documentBytes));
+            return ResponseEntity.ok(context);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
 
     @GetMapping("/{contextId}/search")
     public ResponseEntity<List<DocumentSegment>> searchContext(
-            @PathVariable String contextId,
+            @PathVariable("contextId") String contextId,
             @RequestParam String query,
             @RequestParam(defaultValue = "10") int limit) {
         
@@ -113,7 +162,7 @@ public class ContextController {
     }
 
     @DeleteMapping("/{contextId}")
-    public ResponseEntity<Void> deleteContext(@PathVariable String contextId) {
+    public ResponseEntity<Void> deleteContext(@PathVariable("contextId") String contextId) {
         boolean deleted = contextService.deleteContext(contextId);
         
         if (deleted) {
