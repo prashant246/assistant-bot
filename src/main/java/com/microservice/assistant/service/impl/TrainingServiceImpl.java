@@ -37,6 +37,12 @@ public class TrainingServiceImpl implements TrainingService {
         // Generate training ID for tracking
         String trainingId = UUID.randomUUID().toString();
         trainingStatus.put(trainingId, "QUEUED");
+        
+        // Ensure keywords are extracted from the content if not already done
+        if (data.getKeywords() == null || data.getKeywords().isEmpty()) {
+            extractAndEnhanceKeywords(data);
+        }
+        
         trainingData.put(trainingId, data);
         
         // Process training in a separate thread to not block the API response
@@ -144,6 +150,13 @@ public class TrainingServiceImpl implements TrainingService {
         // Update metadata from training data
         if (data.getMetadata() != null && !data.getMetadata().isEmpty()) {
             context.getMetadata().putAll(data.getMetadata());
+        }
+        
+        // Add keywords to context metadata
+        if (data.getKeywords() != null && !data.getKeywords().isEmpty()) {
+            for (String keyword : data.getKeywords()) {
+                context.getMetadata().put("keyword_" + keyword, keyword);
+            }
         }
     }
     
@@ -422,72 +435,350 @@ public class TrainingServiceImpl implements TrainingService {
             return result; // No training data for this context
         }
         
-        // Prioritize different types of training data
-        // 1. First check for exact query matches in QA pairs (highest relevance)
+        // Calculate relevance scores and sort by relevance
+        Map<TrainingData, Double> scoreMap = new HashMap<>();
         for (TrainingData data : contextTrainingData) {
-            if (data.getType() == TrainingType.QUERY_RESPONSE_PAIR) {
-                String[] parts = data.getContent().split("\\n---\\n", 2);
-                if (parts.length == 2) {
-                    String storedQuery = parts[0].trim().toLowerCase();
-                    String userQuery = query.toLowerCase();
+            double score = data.getRelevanceScore(query);
+            
+            // Apply type-specific boosts
+            switch (data.getType()) {
+                case QUERY_RESPONSE_PAIR:
+                    score *= 1.5; // Boost QA pairs even more
+                    break;
+                case METADATA:
+                    score *= 1.3; // Boost metadata
+                    break;
+                case KEYWORDS:
+                    score *= 1.4; // Boost explicit keywords
+                    break;
+                default:
+                    break;
+            }
+            
+            scoreMap.put(data, score);
+        }
+        
+        // Sort by score and limit results
+        return contextTrainingData.stream()
+                .sorted((a, b) -> Double.compare(scoreMap.getOrDefault(b, 0.0), scoreMap.getOrDefault(a, 0.0)))
+                .limit(limit)
+                .collect(Collectors.toList());
+    }
+    
+    /**
+     * Extract and enhance keywords from training data
+     * @param data The training data to process
+     */
+    private void extractAndEnhanceKeywords(TrainingData data) {
+        // Basic keyword extraction is already implemented in TrainingData.extractKeywords()
+        // This method adds domain-specific enhancements
+        
+        // Add keywords from metadata if available
+        if (data.getMetadata() != null) {
+            for (Map.Entry<String, String> entry : data.getMetadata().entrySet()) {
+                if (entry.getValue() instanceof String) {
+                    String value = (String) entry.getValue();
+                    if (value.length() > 3 && entry.getKey().contains("name") || 
+                            entry.getKey().contains("key") || 
+                            entry.getKey().contains("tag") || 
+                            entry.getKey().contains("id")) {
+                        data.addKeyword(value.toLowerCase());
+                    }
+                }
+            }
+        }
+        
+        // Add keywords from tags if available
+        if (data.getTags() != null) {
+            for (String tag : data.getTags()) {
+                if (tag.length() > 3) {
+                    data.addKeyword(tag.toLowerCase());
+                }
+            }
+        }
+        
+        // For specific content types, extract domain terms
+        switch (data.getType()) {
+            case DOCUMENT:
+                extractMicroserviceTerms(data);
+                break;
+            case QUERY_RESPONSE_PAIR:
+                extractQaPairKeywords(data);
+                break;
+            case FEEDBACK:
+                extractFeedbackKeywords(data);
+                break;
+            default:
+                break;
+        }
+    }
+    
+    /**
+     * Extract microservice-specific terms from document content
+     * @param data The training data
+     */
+    private void extractMicroserviceTerms(TrainingData data) {
+        if (data.getContent() == null) return;
+        
+        // Look for common microservice patterns
+        String content = data.getContent().toLowerCase();
+        
+        // Service names
+        if (content.contains("service") || content.contains("api") || content.contains("endpoint")) {
+            extractServiceNames(content, data);
+        }
+        
+        // Database terms
+        if (content.contains("database") || content.contains("db") || 
+                content.contains("sql") || content.contains("mongo") || 
+                content.contains("redis") || content.contains("cache")) {
+            extractDatabaseTerms(content, data);
+        }
+        
+        // Deployment terms
+        if (content.contains("deploy") || content.contains("kubernetes") || 
+                content.contains("docker") || content.contains("container") || 
+                content.contains("pod") || content.contains("cluster")) {
+            extractDeploymentTerms(content, data);
+        }
+    }
+    
+    /**
+     * Extract service names from content
+     * @param content Lowercase content
+     * @param data Training data to add keywords to
+     */
+    private void extractServiceNames(String content, TrainingData data) {
+        // Extract service names (simplified example)
+        List<String> patterns = List.of(
+            "service", "api", "client", "server", "gateway", "proxy", 
+            "load balancer", "database", "cache", "auth", "payment", "user", 
+            "profile", "order", "cart", "inventory", "recommendation", "search"
+        );
+        
+        for (String pattern : patterns) {
+            int index = content.indexOf(pattern);
+            if (index >= 0) {
+                // Get surrounding words
+                int start = Math.max(0, content.lastIndexOf(" ", index));
+                int end = content.indexOf(" ", index + pattern.length());
+                if (end < 0) end = content.length();
+                
+                String serviceWord = content.substring(start, end).trim();
+                if (serviceWord.length() > pattern.length()) {
+                    data.addKeyword(serviceWord);
                     
-                    // Check for exact or close matches
-                    if (storedQuery.equals(userQuery) || 
-                            storedQuery.contains(userQuery) || 
-                            userQuery.contains(storedQuery)) {
-                        result.add(data);
-                        
-                        // If we found an exact match, this is extremely relevant
-                        if (storedQuery.equals(userQuery) && result.size() >= limit) {
-                            return result;
+                    // Add this as structured metadata
+                    data.addMetadata("service_name", serviceWord);
+                }
+            }
+        }
+        
+        // Look for company and product names using the services
+        List<String> companies = List.of(
+            "amazon", "flipkart", "walmart", "google", "microsoft", "facebook", 
+            "twitter", "netflix", "uber", "airbnb", "linkedin", "paypal"
+        );
+        
+        for (String company : companies) {
+            if (content.contains(company)) {
+                data.addKeyword(company);
+                data.addMetadata("used_by", company);
+            }
+        }
+    }
+    
+    /**
+     * Extract database-related terms
+     * @param content Lowercase content
+     * @param data Training data to add keywords to
+     */
+    private void extractDatabaseTerms(String content, TrainingData data) {
+        List<String> dbTerms = List.of(
+            "sql", "mysql", "postgresql", "oracle", "mongodb", "cassandra", 
+            "redis", "memcached", "neo4j", "couchdb", "dynamodb", "cosmosdb"
+        );
+        
+        for (String term : dbTerms) {
+            if (content.contains(term)) {
+                data.addKeyword(term);
+                data.addMetadata("database_tech", term);
+            }
+        }
+    }
+    
+    /**
+     * Extract deployment-related terms
+     * @param content Lowercase content
+     * @param data Training data to add keywords to
+     */
+    private void extractDeploymentTerms(String content, TrainingData data) {
+        List<String> deployTerms = List.of(
+            "kubernetes", "k8s", "docker", "container", "pod", "deployment", 
+            "aws", "gcp", "azure", "cloud", "ec2", "ecs", "lambda", "serverless"
+        );
+        
+        for (String term : deployTerms) {
+            if (content.contains(term)) {
+                data.addKeyword(term);
+                data.addMetadata("deployment_tech", term);
+            }
+        }
+    }
+    
+    /**
+     * Extract keywords from QA pairs with special handling
+     * @param data Training data
+     */
+    private void extractQaPairKeywords(TrainingData data) {
+        if (data.getContent() == null || !data.getContent().contains("---")) return;
+        
+        String[] parts = data.getContent().split("\\n---\\n", 2);
+        if (parts.length != 2) return;
+        
+        String question = parts[0].trim().toLowerCase();
+        String answer = parts[1].trim().toLowerCase();
+        
+        // Questions about "where" often indicate location/usage information
+        if (question.startsWith("where") || question.contains("where is") || 
+                question.contains("where do") || question.contains("where can")) {
+            data.addKeyword("location");
+            
+            // Extract potential location entities from the answer
+            extractLocationEntities(answer, data);
+        }
+        
+        // Questions about "how" often indicate process/implementation
+        if (question.startsWith("how") || question.contains("how do") || 
+                question.contains("how can") || question.contains("how to")) {
+            data.addKeyword("implementation");
+            data.addKeyword("process");
+        }
+        
+        // Questions about "what" often indicate definition/explanation
+        if (question.startsWith("what") || question.contains("what is")) {
+            data.addKeyword("definition");
+        }
+        
+        // Questions about "who" often indicate ownership/responsibility
+        if (question.startsWith("who") || question.contains("who is")) {
+            data.addKeyword("responsibility");
+            data.addKeyword("ownership");
+        }
+    }
+    
+    /**
+     * Extract location entities from text
+     * @param text The text to process
+     * @param data Training data to add keywords to
+     */
+    private void extractLocationEntities(String text, TrainingData data) {
+        // Simple extraction of location phrases
+        List<String> locationIndicators = List.of(
+            "in the", "at the", "inside", "within", "deployed to", "hosted on", "used by", "located in"
+        );
+        
+        for (String indicator : locationIndicators) {
+            int index = text.indexOf(indicator);
+            if (index >= 0) {
+                int start = index + indicator.length();
+                int end = text.indexOf(".", start);
+                if (end < 0) end = Math.min(text.length(), start + 50);
+                
+                String locationPhrase = text.substring(start, end).trim();
+                if (!locationPhrase.isEmpty()) {
+                    data.addKeyword(locationPhrase);
+                    data.addMetadata("location", locationPhrase);
+                    
+                    // Check for company names in this phrase
+                    List<String> companies = List.of(
+                        "amazon", "flipkart", "walmart", "google", "microsoft"
+                    );
+                    
+                    for (String company : companies) {
+                        if (locationPhrase.contains(company)) {
+                            data.addKeyword(company);
+                            data.addMetadata("used_by", company);
                         }
                     }
                 }
             }
         }
+    }
+    
+    /**
+     * Extract keywords from feedback
+     * @param data Training data
+     */
+    private void extractFeedbackKeywords(TrainingData data) {
+        if (data.getContent() == null) return;
         
-        // 2. Check metadata for relevant information
-        for (TrainingData data : contextTrainingData) {
-            if (data.getType() == TrainingType.METADATA && result.size() < limit) {
-                // Check if metadata contains terms relevant to the query
-                if (data.getMetadata() != null && !data.getMetadata().isEmpty()) {
-                    boolean relevant = data.getMetadata().values().stream()
-                            .anyMatch(value -> {
-                                if (value instanceof String) {
-                                    String strValue = (String) value;
-                                    return strValue.toLowerCase().contains(query.toLowerCase());
-                                }
-                                return false;
-                            });
-                    
-                    if (relevant) {
-                        result.add(data);
-                    }
+        String content = data.getContent().toLowerCase();
+        
+        // Extract rating if available
+        if (content.contains(":")) {
+            String[] parts = content.split(":", 2);
+            try {
+                int rating = Integer.parseInt(parts[0].trim());
+                data.addMetadata("rating", String.valueOf(rating));
+                
+                // For positive feedback, extract what was correct
+                if (rating >= 4 && parts.length > 1) {
+                    data.addKeyword("correct_information");
+                    extractEntityPhrases(parts[1], data);
                 }
+                // For negative feedback, extract what was incorrect
+                else if (rating <= 2 && parts.length > 1) {
+                    data.addKeyword("incorrect_information");
+                    extractEntityPhrases(parts[1], data);
+                }
+            } catch (NumberFormatException ignored) {
+                // Not a rating format, treat as general feedback
+                extractEntityPhrases(content, data);
+            }
+        } else {
+            // General feedback without rating
+            extractEntityPhrases(content, data);
+        }
+    }
+    
+    /**
+     * Extract likely entity phrases from text
+     * @param text The text to process
+     * @param data Training data to add keywords to
+     */
+    private void extractEntityPhrases(String text, TrainingData data) {
+        // In a real implementation, use NLP for entity recognition
+        // Here we'll use a simplistic approach with common patterns
+        
+        // Look for quoted text which often contains specific entities
+        int startQuote = text.indexOf('"');
+        while (startQuote >= 0) {
+            int endQuote = text.indexOf('"', startQuote + 1);
+            if (endQuote > startQuote) {
+                String entity = text.substring(startQuote + 1, endQuote).trim();
+                if (!entity.isEmpty() && entity.length() < 50) {
+                    data.addKeyword(entity);
+                }
+                startQuote = text.indexOf('"', endQuote + 1);
+            } else {
+                break;
             }
         }
         
-        // 3. Check document content for relevance
-        for (TrainingData data : contextTrainingData) {
-            if (data.getType() == TrainingType.DOCUMENT && result.size() < limit) {
-                if (data.getContent() != null && 
-                        data.getContent().toLowerCase().contains(query.toLowerCase())) {
-                    result.add(data);
+        // Look for text between "is" and punctuation
+        int isIndex = text.indexOf(" is ");
+        if (isIndex >= 0) {
+            int endEntity = text.indexOf(".", isIndex + 4);
+            if (endEntity < 0) endEntity = text.indexOf(",", isIndex + 4);
+            if (endEntity < 0) endEntity = text.length();
+            
+            if (endEntity > isIndex + 4) {
+                String entity = text.substring(isIndex + 4, endEntity).trim();
+                if (!entity.isEmpty() && entity.length() < 50) {
+                    data.addKeyword(entity);
                 }
             }
         }
-        
-        // 4. Finally, add feedback if it seems relevant
-        for (TrainingData data : contextTrainingData) {
-            if (data.getType() == TrainingType.FEEDBACK && result.size() < limit) {
-                if (data.getContent() != null && 
-                        data.getContent().toLowerCase().contains(query.toLowerCase())) {
-                    result.add(data);
-                }
-            }
-        }
-        
-        // Limit results
-        return result.stream().limit(limit).collect(Collectors.toList());
     }
 } 

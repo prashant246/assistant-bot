@@ -51,6 +51,7 @@ public class QueryServiceImpl implements QueryService {
         // Find relevant segments from the context
         List<DocumentSegment> relevantSegments = new ArrayList<>();
         List<TrainingData> relevantTrainingData = new ArrayList<>();
+        Map<String, Double> contextScores = new HashMap<>();
         
         if (query.getContextId() != null && !query.getContextId().isEmpty()) {
             // Search in specific context
@@ -60,6 +61,9 @@ public class QueryServiceImpl implements QueryService {
             // Get relevant training data for this context
             relevantTrainingData = trainingService.searchTrainingData(
                     query.getContextId(), query.getQuestion(), 5);
+            
+            // Score this context based on number and quality of matches
+            scoreContext(contextScores, query.getContextId(), relevantSegments, relevantTrainingData);
         } else if (query.isUseAllContexts()) {
             // Search across all contexts
             for (Context context: contextService.getAllContexts()){
@@ -71,6 +75,15 @@ public class QueryServiceImpl implements QueryService {
                 List<TrainingData> trainingData = trainingService.searchTrainingData(
                         context.getId(), query.getQuestion(), 3);
                 relevantTrainingData.addAll(trainingData);
+                
+                // Score this context based on number and quality of matches
+                scoreContext(contextScores, context.getId(), segments, trainingData);
+            }
+            
+            // Sort segments and training data by their context scores
+            if (!contextScores.isEmpty()) {
+                sortByContextRelevance(relevantSegments, contextScores);
+                sortByContextRelevance(relevantTrainingData, contextScores);
             }
         }
         
@@ -88,7 +101,11 @@ public class QueryServiceImpl implements QueryService {
                 System.currentTimeMillis(),
                 0.85  // Placeholder confidence score
         );
-
+        
+        // Store context scores in metadata for future reference
+        if (!contextScores.isEmpty()) {
+            response.getMetadata().put("contextScores", contextScores);
+        }
 
         responses.put(responseId, response);
         return response;
@@ -115,6 +132,58 @@ public class QueryServiceImpl implements QueryService {
         
         // In a real implementation, we would send this feedback to the training service
         return true;
+    }
+    
+    private void scoreContext(Map<String, Double> scores, String contextId, 
+                             List<DocumentSegment> segments, List<TrainingData> trainingData) {
+        double score = 0.0;
+        
+        // Score based on document segments (1 point per segment)
+        score += segments.size();
+        
+        // Score based on training data (weighted by type)
+        for (TrainingData data : trainingData) {
+            switch (data.getType()) {
+                case QUERY_RESPONSE_PAIR:
+                    // QA pairs are most valuable
+                    score += 3.0;
+                    break;
+                case METADATA:
+                    // Metadata is quite valuable
+                    score += 2.0;
+                    break;
+                case DOCUMENT:
+                    // Documents already counted in segments
+                    score += 0.5;
+                    break;
+                case FEEDBACK:
+                    // Feedback is valuable for improving responses
+                    score += 1.5;
+                    break;
+                default:
+                    score += 0.5;
+            }
+        }
+        
+        // Store or update score
+        scores.put(contextId, score);
+    }
+    
+    private <T> void sortByContextRelevance(List<T> items, Map<String, Double> contextScores) {
+        // For items that have a getContextId method (like TrainingData)
+        if (!items.isEmpty() && items.get(0) instanceof TrainingData) {
+            List<TrainingData> trainingItems = (List<TrainingData>) items;
+            trainingItems.sort((a, b) -> {
+                double scoreA = contextScores.getOrDefault(a.getContextId(), 0.0);
+                double scoreB = contextScores.getOrDefault(b.getContextId(), 0.0);
+                return Double.compare(scoreB, scoreA); // Higher scores first
+            });
+        }
+        // For document segments, we need to extract context differently
+        else if (!items.isEmpty() && items.get(0) instanceof DocumentSegment) {
+            // Segments don't directly have contextId, would need additional logic to sort them
+            // This would require adding contextId to DocumentSegment or tracking it separately
+        }
     }
     
     private String generateAnswer(String question, List<DocumentSegment> segments, List<TrainingData> trainingData) {
@@ -163,10 +232,41 @@ public class QueryServiceImpl implements QueryService {
                 contextBuilder.append("#### Service Metadata:\n\n");
                 for (TrainingData meta : metadataEntries) {
                     if (meta.getMetadata() != null) {
+                        contextBuilder.append("Key Information:\n");
                         meta.getMetadata().forEach((key, value) -> {
-                            contextBuilder.append(key).append(": ").append(value).append("\n");
+                            contextBuilder.append("- ").append(key).append(": ").append(value).append("\n");
                         });
                         contextBuilder.append("\n");
+                    }
+                }
+            }
+            
+            // Process feedback for additional insights
+            List<TrainingData> feedbackEntries = trainingData.stream()
+                    .filter(td -> td.getType() == TrainingData.TrainingType.FEEDBACK && 
+                           td.getContent() != null && 
+                           td.getContent().contains(":"))
+                    .collect(Collectors.toList());
+                    
+            if (!feedbackEntries.isEmpty()) {
+                contextBuilder.append("#### User Feedback and Corrections:\n\n");
+                for (TrainingData feedback : feedbackEntries) {
+                    String[] parts = feedback.getContent().split(":", 2);
+                    if (parts.length == 2) {
+                        try {
+                            int rating = Integer.parseInt(parts[0].trim());
+                            if (rating >= 4) {
+                                contextBuilder.append("Confirmed Information: ")
+                                    .append(parts[1].trim()).append("\n\n");
+                            } else if (rating <= 2) {
+                                contextBuilder.append("Corrected Information: ")
+                                    .append(parts[1].trim()).append("\n\n");
+                            }
+                        } catch (NumberFormatException e) {
+                            // If not a valid rating format, include as general feedback
+                            contextBuilder.append("User Input: ")
+                                .append(feedback.getContent()).append("\n\n");
+                        }
                     }
                 }
             }
@@ -206,7 +306,14 @@ public class QueryServiceImpl implements QueryService {
                 Map<String, String> systemMessage = new HashMap<>();
                 systemMessage.put("role", "system");
                 systemMessage.put("content", "You are a microservice assistant. " +
-                        "Use the following context to answer the user's question: \n\n" + context);
+                        "Answer the user's question based on ALL of the following information: \n\n" + 
+                        context + 
+                        "\n\nWhen information comes from multiple sources, prioritize: " +
+                        "1. Specific Q&A pairs that directly address the question" +
+                        "2. User feedback and corrections" +
+                        "3. Service metadata and confirmed information" +
+                        "4. Document segments and other sources" +
+                        "\n\nAlways provide the most accurate and comprehensive answer using all available context.");
                 messages.add(systemMessage);
             }
             
