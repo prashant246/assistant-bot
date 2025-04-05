@@ -1,0 +1,15 @@
+/Users/Shared/assistant-bot/src/main/java/com/microservice/assistant/Application.java
+/Users/Shared/assistant-bot/src/main/java/com/microservice/assistant/api/ContextController.java
+/Users/Shared/assistant-bot/src/main/java/com/microservice/assistant/api/QueryController.java
+/Users/Shared/assistant-bot/src/main/java/com/microservice/assistant/api/TrainingController.java
+/Users/Shared/assistant-bot/src/main/java/com/microservice/assistant/model/Context.java
+/Users/Shared/assistant-bot/src/main/java/com/microservice/assistant/model/DocumentSegment.java
+/Users/Shared/assistant-bot/src/main/java/com/microservice/assistant/model/Query.java
+/Users/Shared/assistant-bot/src/main/java/com/microservice/assistant/model/QueryResponse.java
+/Users/Shared/assistant-bot/src/main/java/com/microservice/assistant/model/TrainingData.java
+/Users/Shared/assistant-bot/src/main/java/com/microservice/assistant/service/ContextService.java
+/Users/Shared/assistant-bot/src/main/java/com/microservice/assistant/service/QueryService.java
+/Users/Shared/assistant-bot/src/main/java/com/microservice/assistant/service/TrainingService.java
+/Users/Shared/assistant-bot/src/main/java/com/microservice/assistant/service/impl/ContextServiceImpl.java
+/Users/Shared/assistant-bot/src/main/java/com/microservice/assistant/service/impl/QueryServiceImpl.java
+/Users/Shared/assistant-bot/src/main/java/com/microservice/assistant/service/impl/TrainingServiceImpl.java
